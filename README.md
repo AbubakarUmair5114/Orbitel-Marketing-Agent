@@ -1,4 +1,4 @@
-<img width="1852" height="853" alt="image" src="https://github.com/user-attachments/assets/893ab4ef-420e-4be1-b22a-fc33d8ee84b9" /># Orbitel Automated Customer Sentiment & Churn Risk Intelligence Engine
+># Orbitel Automated Customer Sentiment & Churn Risk Intelligence Engine
 > **Enterprise AI Automation & Executive Business Intelligence Flagship Portfolio**  
 > **Role Targeted:** AI Automation & Analytics Specialist (Reporting Directly to Company Owner)  
 > **Author:** AI Automation & Analytics Specialist  
