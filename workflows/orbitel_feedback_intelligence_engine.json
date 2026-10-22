@@ -1,0 +1,1059 @@
+{
+  "name": "Orbitel Customer Sentiment & Churn Risk Intelligence Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "orbitel-customer-feedback-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2720,
+        320
+      ],
+      "id": "98261502-8e6b-435c-973f-f48d8d559c1b",
+      "name": "1. Webhook - Receive Feedback",
+      "webhookId": "orbitel-feedback-webhook-id"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a8ca1b79-2f8f-4b9c-98f7-92beff5cbee8",
+              "name": "operations_email",
+              "value": "ops@example.com",
+              "type": "string"
+            },
+            {
+              "id": "7e9f257b-d710-4b03-a27a-62cdb9d27679",
+              "name": "finance_email",
+              "value": "finance@example.com",
+              "type": "string"
+            },
+            {
+              "id": "f26a5d88-23bb-4956-b527-00f11f1eecc2",
+              "name": "sales_email",
+              "value": "sales@example.com",
+              "type": "string"
+            },
+            {
+              "id": "b666a12a-56a8-4a59-a9fa-311b6d5e31ca",
+              "name": "marketing_email",
+              "value": "marketing@example.com",
+              "type": "string"
+            },
+            {
+              "id": "263a4c69-0a0f-4ffa-bb78-2288d97894e4",
+              "name": "hr_email",
+              "value": "hr@example.com",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2496,
+        320
+      ],
+      "id": "294f0b37-8d70-48f5-9350-46b1651c1951",
+      "name": "Config"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 2. Validate & Clean Input\n// Returns { valid: true, ... } for good input, or { valid: false, http_status, error, field }.\nconst MAX_TEXT = 2000;\nconst MIN_TEXT = 10;\nconst MAX_ID = 100;\n\n// Allowed values. Anything else is mapped to \"unknown\".\nconst CUSTOMER_TYPES = ['individual', 'household', 'sme', 'corporate', 'enterprise'];\n// EDIT THIS LIST if your service_type values differ.\nconst SERVICE_TYPES = ['postpaid', 'prepaid', 'data', 'voice', 'sms', 'roaming', 'broadband', 'international_calling', 'business_plan', 'add_on_package'];\nconst SEGMENTS = {\n  product_used: ['postpaid_plan', 'data_bundle', 'roaming', 'international_calling', 'business_plan', 'add_on_package'],\n  plan_type: ['basic', 'standard', 'premium', 'business'],\n  customer_value_segment: ['low', 'medium', 'high', 'premium'],\n  usage_behavior: ['high_data_user', 'low_usage_user', 'roaming_user', 'business_critical_user', 'price_sensitive_user'],\n  business_individual_segment: ['individual', 'business'],\n  tenure_segment: ['new_customer', 'existing_customer', 'long_term_customer'],\n};\n\n// Emails: anything that looks like name@domain.tld\nconst EMAIL_REGEX = /[^\\s@<>()\\[\\]\",;]+@[^\\s@<>()\\[\\]\",;]+\\.[^\\s@<>()\\[\\]\",;]+/g;\n// Pakistani mobiles: +92 300 1234567, 0092-300-1234567, 0300-1234567, 03001234567, 923001234567,\n// with optional spaces, dashes, dots or brackets around the operator code.\nconst PAK_PHONE_REGEX = /(?<!\\d)(?:(?:\\+|00)?92[\\s\\-.]?|0)\\(?3\\d{2}\\)?[\\s\\-.]?\\d{3}[\\s\\-.]?\\d{4}(?!\\d)/g;\n\nconst urgencyPatterns = [\n  { pattern: /\\bcancel\\w*/i, label: 'cancel' },\n  { pattern: /\\bswitch\\w*/i, label: 'switch' },\n  { pattern: /\\boutage\\w*/i, label: 'outage' },\n  { pattern: /\\bfraud\\w*/i, label: 'fraud' },\n  { pattern: /\\b(legal\\w*|lawsuit|court\\s?case|sue\\b|suing\\b)/i, label: 'legal' },\n  { pattern: /\\brefund\\w*/i, label: 'refund' },\n  { pattern: /\\bterminat\\w*/i, label: 'terminate' },\n  { pattern: /\\bdisconnect\\w*/i, label: 'disconnect' },\n  { pattern: /\\b(complain\\w*|escalat\\w*|PTA\\b|PEMRA\\b|regulator\\w*)/i, label: 'complaint_escalation' },\n  { pattern: /\\b(band\\s?karo|chorr?\\w*|chorna|chod\\w*|nikal\\w*|wapas\\w*|dobara\\s?nahi|nahi\\s?chahiye|problem\\s?hai|bahut\\s?bura)\\b/i, label: 'roman_urdu_urgency' },\n  { pattern: /\\b(jazz|telenor|zong|ufone|going\\s?to\\s?(switch|leave|move))\\b/i, label: 'competitor_switch' },\n  { pattern: /\\b(leaving|leaving\\s?orbitel|port\\s?out|number\\s?portability|MNP)\\b/i, label: 'leaving' },\n];\n\nfunction fail(status, error, field) {\n  return [{ json: { valid: false, http_status: status, error: error, field: field || null } }];\n}\n\n// Collapse every run of whitespace/control characters (newline, tab, CR...) to one space.\nfunction oneLine(s) {\n  return String(s).replace(/[\\s\\u0000-\\u001f\\u007f]+/g, ' ').trim();\n}\n\nfunction pickEnum(v, allowed) {\n  if (typeof v !== 'string') return 'unknown';\n  const key = v.trim().toLowerCase().replace(/[\\s\\-]+/g, '_');\n  return allowed.includes(key) ? key : 'unknown';\n}\n\nfunction freeText(v, max) {\n  if (typeof v === 'number' && Number.isFinite(v)) v = String(v);\n  if (typeof v !== 'string') return 'unknown';\n  const s = oneLine(v);\n  if (s === '') return 'unknown';\n  return Array.from(s).slice(0, max).join('');\n}\n\nfunction makeRecordId() {\n  let u = '';\n  try {\n    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') u = crypto.randomUUID();\n  } catch (e) { u = ''; }\n  if (!u) {\n    u = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);\n  }\n  return 'rec-' + Date.now().toString(36) + '-' + u;\n}\n\ntry {\n  const input = $input.first().json || {};\n  const headers = input.headers || {};\n  const contentType = String(headers['content-type'] || '').toLowerCase();\n  const body = input.body;\n\n  if (!contentType.includes('json')) {\n    return fail(400, 'Request must be sent as JSON with Content-Type: application/json.', 'body');\n  }\n  if (body === undefined || body === null || typeof body !== 'object' || Array.isArray(body)) {\n    return fail(400, 'Request body must be a JSON object.', 'body');\n  }\n\n  // ---- text\n  const rawText = body.text;\n  if (rawText === undefined || rawText === null) return fail(400, 'text is required.', 'text');\n  if (typeof rawText !== 'string') return fail(400, 'text must be a string.', 'text');\n  let text = oneLine(rawText);\n  if (Array.from(text).length < MIN_TEXT) {\n    return fail(400, 'text must be at least ' + MIN_TEXT + ' characters after trimming.', 'text');\n  }\n\n  // ---- customer_id\n  let customerId = body.customer_id;\n  if (customerId === undefined || customerId === null) return fail(400, 'customer_id is required.', 'customer_id');\n  if (typeof customerId === 'number') {\n    if (!Number.isFinite(customerId)) return fail(400, 'customer_id must be a valid number or string.', 'customer_id');\n    customerId = String(customerId);\n  } else if (typeof customerId === 'string') {\n    customerId = oneLine(customerId);\n  } else {\n    return fail(400, 'customer_id must be a string or a number.', 'customer_id');\n  }\n  if (customerId === '') return fail(400, 'customer_id must not be empty.', 'customer_id');\n  if (Array.from(customerId).length > MAX_ID) {\n    return fail(400, 'customer_id must be at most ' + MAX_ID + ' characters.', 'customer_id');\n  }\n\n  // ---- redact PII BEFORE anything else sees the text\n  text = text.replace(EMAIL_REGEX, '[EMAIL_REMOVED]').replace(PAK_PHONE_REGEX, '[PHONE_REMOVED]');\n\n  // ---- urgency regexes run on the full (redacted) text, before truncation\n  let urgency_override = false;\n  const matched_urgency_labels = [];\n  for (const item of urgencyPatterns) {\n    if (item.pattern.test(text)) {\n      urgency_override = true;\n      matched_urgency_labels.push(item.label);\n    }\n  }\n\n  // ---- truncate (by code point so emoji are never split)\n  let truncated = false;\n  const chars = Array.from(text);\n  if (chars.length > MAX_TEXT) {\n    text = chars.slice(0, MAX_TEXT).join('');\n    truncated = true;\n  }\n\n  // ---- timestamp\n  let timestamp = '';\n  const rawTs = body.timestamp;\n  if (typeof rawTs === 'string' && rawTs.trim() !== '') {\n    const t = rawTs.trim();\n    const d = new Date(t);\n    if (!isNaN(d.getTime())) {\n      timestamp = /^\\d{4}-\\d{2}-\\d{2}T/.test(t) ? t : d.toISOString();\n    }\n  } else if (typeof rawTs === 'number' && Number.isFinite(rawTs)) {\n    const d = new Date(rawTs);\n    if (!isNaN(d.getTime())) timestamp = d.toISOString();\n  }\n  if (!timestamp) timestamp = new Date().toISOString();\n\n  return [{\n    json: {\n      valid: true,\n      http_status: 200,\n      customer_id: customerId,\n      customer_type: pickEnum(body.customer_type, CUSTOMER_TYPES),\n      service_type: pickEnum(body.service_type, SERVICE_TYPES),\n      source: freeText(body.source, 100),\n      timestamp: timestamp,\n      cleanedText: text,\n      truncated: truncated,\n      urgency_override: urgency_override,\n      matched_urgency_labels: matched_urgency_labels,\n      record_id: makeRecordId(),\n      product_used: pickEnum(body.product_used, SEGMENTS.product_used),\n      plan_type: pickEnum(body.plan_type, SEGMENTS.plan_type),\n      customer_value_segment: pickEnum(body.customer_value_segment, SEGMENTS.customer_value_segment),\n      usage_behavior: pickEnum(body.usage_behavior, SEGMENTS.usage_behavior),\n      business_individual_segment: pickEnum(body.business_individual_segment, SEGMENTS.business_individual_segment),\n      tenure_segment: pickEnum(body.tenure_segment, SEGMENTS.tenure_segment),\n    },\n  }];\n} catch (e) {\n  return fail(500, 'Internal error while validating the request.', null);\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2272,
+        320
+      ],
+      "id": "6bf96a33-8991-48f9-9fb7-0a4db746b6ae",
+      "name": "2. Validate & Clean Input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f9688e74-dca2-417c-afbf-96ca1d2efb45",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2048,
+        320
+      ],
+      "id": "56b7891c-dc5c-49dd-8ec8-7fa506f3a4e0",
+      "name": "2b. Input Valid?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', error: $json.error, field: $json.field }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_status || 400 }}"
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -1824,
+        528
+      ],
+      "id": "5462fdbd-0a73-4b66-9be3-1c2ca00d7fe9",
+      "name": "2c. Respond - Validation Error"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are a cross-functional business intelligence analyst for Orbitel, a postpaid telecom operator in Pakistan.\n\nYour job is not just to analyze customer sentiment \u2014 you must identify which Orbitel department should act on each piece of feedback, what business signal it represents, and what customer segment context is relevant.\n\nYou analyze feedback across 5 departments:\n- OPERATIONS: network coverage, tower issues, call drops, data speed, congestion\n- FINANCE: billing disputes, payment issues, incorrect charges, refund requests\n- SALES: roaming interest, plan upgrade signals, bundle questions, new service demand\n- MARKETING: pricing concerns, competitor comparisons, loyalty/retention triggers\n- HR: agent rudeness, poor support experience, escalation complaints\n\nYou also analyze customer segmentation details such as:\n- Customer type: individual, household, SME, corporate, enterprise\n- Product used: postpaid plan, data bundle, roaming, international calling, business plan, add-on package\n- Usage behavior: high data user, low usage user, roaming user, business-critical user, price-sensitive user\n- Customer value: low, medium, high, premium, unknown\n- Segment-specific business meaning, such as upsell potential, churn risk, service priority, or retention need\n\nUse the customer segmentation answers only if they are provided. Do not invent missing segmentation details. If a segmentation field is \"unknown\", not available, or blank, return \"unknown\" for it. Never replace \"unknown\" with a guess.\n\nReturn ONLY a valid JSON object. No markdown, no code blocks, no explanation. Just raw JSON."
+            },
+            {
+              "content": "=Analyze this Orbitel customer feedback:\n\nCustomer ID: {{ $json.customer_id }}\nSource: {{ $json.source }}\nFeedback: {{ $json.cleanedText }}\nUrgency Override Flag: {{ $json.urgency_override }}\n\nCustomer Segmentation Inputs:\nCustomer Type: {{ $json.customer_type }}\nProduct Used: {{ $json.product_used }}\nPlan Type: {{ $json.plan_type }}\nCustomer Value Segment: {{ $json.customer_value_segment }}\nUsage Behavior: {{ $json.usage_behavior }}\nBusiness/Individual Segment: {{ $json.business_individual_segment }}\nTenure Segment: {{ $json.tenure_segment }}\n\nReturn ONLY this JSON structure (no markdown, no code blocks):\n\n{\n  \"sentiment\": \"positive\" | \"negative\" | \"neutral\",\n  \"confidence_score\": 0.0,\n  \"issue_categories\": [\"network\", \"billing\", \"pricing\", \"service_delay\", \"product_dissatisfaction\", \"coverage\", \"roaming\", \"customer_service\"],\n  \"urgency\": \"low\" | \"medium\" | \"high\",\n  \"churn_risk\": true,\n  \"root_cause_summary\": \"1-2 sentence explanation\",\n  \"recommended_action\": \"specific actionable step for the target department\",\n  \"business_signal\": \"coverage_expansion\" | \"billing_issue\" | \"upsell_opportunity\" | \"service_recovery\" | \"hr_escalation\" | \"product_feedback\" | \"none\",\n  \"target_department\": \"operations\" | \"finance\" | \"sales\" | \"marketing\" | \"hr\",\n  \"location_mentioned\": \"area/city name or null\",\n\n  \"customer_segment_profile\": {\n    \"customer_type\": \"individual\" | \"household\" | \"sme\" | \"corporate\" | \"enterprise\" | \"unknown\",\n    \"product_used\": \"postpaid_plan\" | \"data_bundle\" | \"roaming\" | \"international_calling\" | \"business_plan\" | \"add_on_package\" | \"unknown\",\n    \"plan_type\": \"basic\" | \"standard\" | \"premium\" | \"business\" | \"unknown\",\n    \"customer_value_segment\": \"low\" | \"medium\" | \"high\" | \"premium\" | \"unknown\",\n    \"usage_behavior\": \"high_data_user\" | \"low_usage_user\" | \"roaming_user\" | \"business_critical_user\" | \"price_sensitive_user\" | \"unknown\",\n    \"business_individual_segment\": \"individual\" | \"business\" | \"unknown\",\n    \"tenure_segment\": \"new_customer\" | \"existing_customer\" | \"long_term_customer\" | \"unknown\",\n    \"segment_interpretation\": \"1 sentence explaining what this customer segment means for Orbitel\"\n  },\n\n  \"retention_template\": {\n    \"offer_type\": \"discount\" | \"bonus_data\" | \"free_month\" | \"plan_upgrade\" | \"service_credit\" | \"none\",\n    \"message_draft\": \"ready-to-send message the retention team can use\",\n    \"priority\": \"immediate\" | \"within_24h\" | \"within_week\" | \"no_action\"\n  }\n}\n\nRules:\n- If urgency_override is true, set urgency to \"high\"\n- If churn_risk is true, priority must be \"immediate\"\n- If feedback mentions a location/area, extract it to location_mentioned\n- Only include issue_categories that actually apply; do not return the full list\n- Make the message_draft specific to the customer's actual complaint\n- recommended_action must be specific to the target_department:\n  - operations: technical actions such as deploy engineers, audit towers, check load data\n  - finance: account actions such as review invoices, verify charges, process refund\n  - sales: commercial actions such as contact customer, prepare quote, offer bundle\n  - marketing: campaign actions such as deploy retention offer, review competitor pricing\n  - hr: people actions such as pull call recording, identify agent, schedule coaching\n- Use customer segmentation inputs when provided\n- Do not invent missing segmentation details\n- In customer_segment_profile, copy each segmentation input exactly as supplied above (including \"unknown\")\n- If a segmentation field is blank, missing, or unclear, return \"unknown\"\n- segment_interpretation must explain how this segment affects business action"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -1840,
+        320
+      ],
+      "id": "ef034305-7fa2-4388-a47c-217054b7e265",
+      "name": "3. AI Analysis (GPT-4o-mini)",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 4000,
+      "alwaysOutputData": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAIAPI_CREDENTIAL_ID",
+          "name": "openAiApi Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 4. Parse AI Response\n// Never throws: a bad or missing AI reply becomes a flagged record that is still logged.\nconst base = $('2. Validate & Clean Input').first().json;\nconst items = $input.all();\nconst ai = items.length > 0 ? (items[0].json || {}) : null;\n\nconst SENTIMENTS = ['positive', 'negative', 'neutral'];\nconst CATEGORIES = ['network', 'billing', 'pricing', 'service_delay', 'product_dissatisfaction', 'coverage', 'roaming', 'customer_service'];\nconst URGENCIES = ['low', 'medium', 'high'];\nconst DEPARTMENTS = ['operations', 'finance', 'sales', 'marketing', 'hr'];\nconst SIGNALS = ['coverage_expansion', 'billing_issue', 'upsell_opportunity', 'service_recovery', 'hr_escalation', 'product_feedback', 'none'];\nconst PRIORITIES = ['immediate', 'within_24h', 'within_week', 'no_action'];\nconst OFFERS = ['discount', 'bonus_data', 'free_month', 'plan_upgrade', 'service_credit', 'none'];\n\n// Single line, trimmed, length-limited. null/undefined/objects become \"\".\nfunction oneLine(v, max) {\n  let s = '';\n  if (typeof v === 'string') s = v;\n  else if (typeof v === 'number' || typeof v === 'boolean') s = String(v);\n  s = s.replace(/\\s+/g, ' ').trim();\n  const chars = Array.from(s);\n  return chars.length > max ? chars.slice(0, max).join('') : s;\n}\n\nfunction pick(v, allowed, fallback) {\n  if (typeof v !== 'string') return fallback;\n  const key = v.trim().toLowerCase();\n  return allowed.includes(key) ? key : fallback;\n}\n\n// Find the first {...} block that parses as a JSON object (ignores prose and code fences).\nfunction parseFirstJsonObject(text) {\n  let from = 0;\n  for (let attempt = 0; attempt < 20; attempt++) {\n    const start = text.indexOf('{', from);\n    if (start < 0) return null;\n    let depth = 0, inStr = false, esc = false, end = -1;\n    for (let i = start; i < text.length; i++) {\n      const ch = text[i];\n      if (inStr) {\n        if (esc) esc = false;\n        else if (ch === '\\\\') esc = true;\n        else if (ch === '\"') inStr = false;\n        continue;\n      }\n      if (ch === '\"') { inStr = true; continue; }\n      if (ch === '{') depth++;\n      else if (ch === '}') {\n        depth--;\n        if (depth === 0) { end = i; break; }\n      }\n    }\n    if (end > 0) {\n      try {\n        const obj = JSON.parse(text.slice(start, end + 1));\n        if (obj && typeof obj === 'object' && !Array.isArray(obj)) return obj;\n      } catch (e) { /* try the next '{' */ }\n    }\n    from = start + 1;\n  }\n  return null;\n}\n\nlet aiStatus = 'ok';\nlet parsed = null;\n\ntry {\n  if (ai === null || ai.error) {\n    aiStatus = 'failed';\n  } else {\n    let text = '';\n    const out = ai.output;\n    if (Array.isArray(out)) {\n      for (const o of out) {\n        if (o && Array.isArray(o.content)) {\n          for (const c of o.content) {\n            if (c && typeof c.text === 'string') text += c.text + '\\n';\n          }\n        }\n      }\n    }\n    if (text.trim() === '' && typeof ai.output_text === 'string') text = ai.output_text;\n    text = text.replace(/```(?:json)?/gi, '');\n    parsed = text.trim() === '' ? null : parseFirstJsonObject(text);\n    if (parsed === null) aiStatus = 'parse_error';\n  }\n} catch (e) {\n  parsed = null;\n  aiStatus = 'parse_error';\n}\n\nconst failed = parsed === null;\nconst p = failed ? {} : parsed;\nconst profile = (p.customer_segment_profile && typeof p.customer_segment_profile === 'object') ? p.customer_segment_profile : {};\nconst tmpl = (p.retention_template && typeof p.retention_template === 'object') ? p.retention_template : {};\n\n// sentiment\nconst sentiment = pick(p.sentiment, SENTIMENTS, 'neutral');\n\n// confidence_score: number clamped to 0..1, else 0\nlet confidence = 0;\nlet n = NaN;\nif (typeof p.confidence_score === 'number') n = p.confidence_score;\nelse if (typeof p.confidence_score === 'string' && p.confidence_score.trim() !== '') n = Number(p.confidence_score);\nif (Number.isFinite(n)) confidence = Math.round(Math.min(1, Math.max(0, n)) * 1000) / 1000;\n\n// issue_categories: allowed values only, joined into a clean string\nlet cats = [];\nif (Array.isArray(p.issue_categories)) {\n  cats = p.issue_categories\n    .map((c) => (typeof c === 'string' ? c.trim().toLowerCase() : ''))\n    .filter((c) => CATEGORIES.includes(c));\n  cats = Array.from(new Set(cats));\n}\n\n// urgency: validate, then apply the regex override. A failed analysis is always \"high\" for human review.\nlet urgency = pick(p.urgency, URGENCIES, 'medium');\nif (base.urgency_override === true) urgency = 'high';\nif (failed) urgency = 'high';\n\n// churn_risk: real boolean only\nlet churn = false;\nif (p.churn_risk === true) churn = true;\nelse if (typeof p.churn_risk === 'string' && p.churn_risk.trim().toLowerCase() === 'true') churn = true;\n\n// retention\nlet priority = pick(tmpl.priority, PRIORITIES, 'no_action');\nif (churn) priority = 'immediate';\nconst offerType = pick(tmpl.offer_type, OFFERS, 'none');\n\n// location: never the text \"null\"\nlet location = oneLine(p.location_mentioned, 80);\nif (location.toLowerCase() === 'null') location = '';\n\nlet rootCause = oneLine(p.root_cause_summary, 1000);\nlet action = oneLine(p.recommended_action, 1000);\nif (failed) {\n  rootCause = 'AI analysis unavailable (' + aiStatus + '). Manual review of the original feedback is required.';\n  action = 'Manual review: read the original feedback and route it to the right department.';\n}\n\nconst segmentImpact = oneLine(profile.segment_interpretation, 500) || oneLine(p.customer_segment_impact, 500) || 'unknown';\n\nreturn [{\n  json: {\n    customer_id: base.customer_id,\n    customer_type: base.customer_type,\n    service_type: base.service_type,\n    record_id: base.record_id,\n    source: base.source,\n    timestamp: base.timestamp,\n    original_text: base.cleanedText,\n    truncated: base.truncated === true,\n\n    sentiment: sentiment,\n    confidence_score: confidence,\n    issue_categories: cats.join(', '),\n    urgency: urgency,\n    churn_risk: churn,\n    root_cause_summary: rootCause,\n    recommended_action: action,\n\n    business_signal: pick(p.business_signal, SIGNALS, 'none'),\n    customer_segment_impact: segmentImpact,\n    target_department: pick(p.target_department, DEPARTMENTS, 'operations'),\n    location_mentioned: location,\n\n    retention_offer_type: offerType,\n    retention_message: oneLine(tmpl.message_draft, 1000),\n    retention_priority: priority,\n\n    // Segmentation comes from the request (node 2), never from model guesses.\n    product_used: base.product_used,\n    plan_type: base.plan_type,\n    customer_value_segment: base.customer_value_segment,\n    usage_behavior: base.usage_behavior,\n    business_individual_segment: base.business_individual_segment,\n    tenure_segment: base.tenure_segment,\n\n    matched_urgency_labels: (base.matched_urgency_labels || []).join(', '),\n    parse_error: aiStatus === 'parse_error',\n    ai_status: aiStatus,\n    status: failed ? 'error' : 'ok',\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        320
+      ],
+      "id": "176d0ef7-8899-4876-90fb-7318c04f778b",
+      "name": "4. Parse AI Response"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ORBITEL_MASTER_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orbitel Master Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_ORBITEL_MASTER_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_ORBITEL_MASTER_SHEET_ID/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "customer_id",
+              "lookupValue": "={{ $json.customer_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -1376,
+        320
+      ],
+      "id": "8486e1b0-e438-4449-bef2-866c4519b939",
+      "name": "8. Fetch Customer History",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleApi": {
+          "id": "YOUR_GOOGLEAPI_CREDENTIAL_ID",
+          "name": "googleApi Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 9. Dedup Check (per customer, window depends on business_signal)\nconst current = $('4. Parse AI Response').first().json;\n\nconst WINDOWS = {\n  coverage_expansion: 7 * 24,   // 7 days\n  billing_issue: 30 * 24,       // 30 days\n  service_recovery: 48,         // 48 hours\n  hr_escalation: 7 * 24,        // 7 days\n  upsell_opportunity: 30 * 24,  // 30 days\n  product_feedback: 90 * 24,    // 90 days\n  none: 24,                     // 24 hours\n};\nconst windowHours = WINDOWS[current.business_signal] || 24;\n\nconst now = new Date();\nconst windowStart = now.getTime() - windowHours * 60 * 60 * 1000;\nconst upperBound = now.getTime() + 5 * 60 * 1000; // small allowance for clock skew\n\nlet rows = [];\ntry {\n  rows = $input.all().map((i) => i.json || {});\n} catch (e) {\n  rows = [];\n}\n\nconst isTrue = (v) => String(v).trim().toLowerCase() === 'true';\nconst sameText = (a, b) => String(a === undefined || a === null ? '' : a).trim() === String(b === undefined || b === null ? '' : b).trim();\n\nlet duplicate = null;\nlet duplicateTime = 0;\n\n// A record whose AI analysis failed is never treated as a duplicate: a human must see it.\nif (current.ai_status === 'ok') {\n  for (const row of rows) {\n    if (!row || row.error) continue;                          // failed/empty lookup\n    if (!row.record_id || !row.timestamp || !row.business_signal) continue;\n    if (!sameText(row.customer_id, current.customer_id)) continue;\n    if (!sameText(row.business_signal, current.business_signal)) continue;\n    if (sameText(row.record_id, current.record_id)) continue;  // ignore itself (retries)\n    // Only compare against rows that were real analyses and not themselves suppressed duplicates\n    if (isTrue(row.is_duplicate) || isTrue(row.parse_error)) continue;\n    if (row.ai_status && String(row.ai_status).trim() !== 'ok') continue;\n    const t = new Date(row.timestamp).getTime();\n    if (isNaN(t)) continue;                                    // unparseable timestamp\n    if (t >= windowStart && t <= upperBound && t >= duplicateTime) {\n      duplicate = row;\n      duplicateTime = t;\n    }\n  }\n}\n\nreturn [{\n  json: {\n    ...current,\n    is_duplicate: duplicate !== null,\n    duplicate_of: duplicate !== null ? String(duplicate.record_id) : '',\n    dedup_window_hours: windowHours,\n    past_rows_count: rows.filter((r) => r && r.record_id).length,\n    dedup_check_time: now.toISOString(),\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        320
+      ],
+      "id": "6faedbf8-ed1b-41e0-930f-8a71a7d36bf6",
+      "name": "9. Dedup Check"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_ORBITEL_MASTER_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Orbitel Master Sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_ORBITEL_MASTER_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_ORBITEL_MASTER_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "customer_id": "={{ $json.customer_id }}",
+            "sentiment": "={{ $json.sentiment }}",
+            "confidence_score": "={{ $json.confidence_score }}",
+            "issue_categories": "={{ $json.issue_categories }}",
+            "urgency": "={{ $json.urgency }}",
+            "churn_risk": "={{ $json.churn_risk }}",
+            "root_cause_summary": "={{ $json.root_cause_summary }}",
+            "recommended_action": "={{ $json.recommended_action }}",
+            "source": "={{ $json.source }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "record_id": "={{ $json.record_id }}",
+            "business_signal": "={{ $json.business_signal }}",
+            "location_mentioned": "={{ $json.location_mentioned }}",
+            "target_department": "={{ $json.target_department }}",
+            "retention_offer_type": "={{ $json.retention_offer_type }}",
+            "retention_priority": "={{ $json.retention_priority }}",
+            "retention_message": "={{ $json.retention_message }}",
+            "Customer_type": "={{ $json.customer_type }}",
+            "service_type": "={{ $json.service_type }}",
+            "parse_error": "={{ $json.parse_error }}",
+            "matched_urgency_labels": "={{ $json.matched_urgency_labels }}",
+            "is_duplicate": "={{ $json.is_duplicate }}",
+            "duplicate_of": "={{ $json.duplicate_of }}",
+            "dedup_window_hours": "={{ $json.dedup_window_hours }}",
+            "customer_segment_impact": "={{ $json.customer_segment_impact }}",
+            "product_used": "={{ $json.product_used }}",
+            "plan_type": "={{ $json.plan_type }}",
+            "customer_value_segment": "={{ $json.customer_value_segment }}",
+            "usage_behavior": "={{ $json.usage_behavior }}",
+            "business_individual_segment": "={{ $json.business_individual_segment }}",
+            "tenure_segment": "={{ $json.tenure_segment }}",
+            "ai_status": "={{ $json.ai_status }}",
+            "status": "={{ $json.status }}"
+          },
+          "matchingColumns": [
+            "record_id"
+          ],
+          "schema": [
+            {
+              "id": "customer_id",
+              "displayName": "customer_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment",
+              "displayName": "sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "confidence_score",
+              "displayName": "confidence_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issue_categories",
+              "displayName": "issue_categories",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "urgency",
+              "displayName": "urgency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "churn_risk",
+              "displayName": "churn_risk",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "root_cause_summary",
+              "displayName": "root_cause_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recommended_action",
+              "displayName": "recommended_action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "record_id",
+              "displayName": "record_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "business_signal",
+              "displayName": "business_signal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "location_mentioned",
+              "displayName": "location_mentioned",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "target_department",
+              "displayName": "target_department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "retention_offer_type",
+              "displayName": "retention_offer_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "retention_priority",
+              "displayName": "retention_priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "retention_message",
+              "displayName": "retention_message",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Customer_type",
+              "displayName": "Customer_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "service_type",
+              "displayName": "service_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "parse_error",
+              "displayName": "parse_error",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "matched_urgency_labels",
+              "displayName": "matched_urgency_labels",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "is_duplicate",
+              "displayName": "is_duplicate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duplicate_of",
+              "displayName": "duplicate_of",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "dedup_window_hours",
+              "displayName": "dedup_window_hours",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customer_segment_impact",
+              "displayName": "customer_segment_impact",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "product_used",
+              "displayName": "product_used",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "plan_type",
+              "displayName": "plan_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "customer_value_segment",
+              "displayName": "customer_value_segment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "usage_behavior",
+              "displayName": "usage_behavior",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "business_individual_segment",
+              "displayName": "business_individual_segment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tenure_segment",
+              "displayName": "tenure_segment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_status",
+              "displayName": "ai_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "cellFormat": "RAW"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -928,
+        320
+      ],
+      "id": "554ec470-d2b3-45a0-bc2b-e79c2a9b4cee",
+      "name": "7. Log to Master Sheet",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "googleApi": {
+          "id": "YOUR_GOOGLEAPI_CREDENTIAL_ID",
+          "name": "googleApi Account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'success', record_id: $('9. Dedup Check').first().json.record_id, ai_status: $('9. Dedup Check').first().json.ai_status, urgency: $('9. Dedup Check').first().json.urgency, is_duplicate: $('9. Dedup Check').first().json.is_duplicate, alert_triggered: ($('9. Dedup Check').first().json.urgency === 'high' && $('9. Dedup Check').first().json.is_duplicate === false) }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -704,
+        160
+      ],
+      "id": "4ea3be32-d854-4813-934d-29b5e5d18d76",
+      "name": "7b. Respond - Success"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'error', error: 'Internal error: the feedback could not be saved to the sheet.', record_id: $('9. Dedup Check').first().json.record_id }) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        -704,
+        480
+      ],
+      "id": "404e0ab4-7f98-43cd-ab91-c591b6789571",
+      "name": "7c. Respond - Internal Error"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5c1a2b86-e621-4708-b61f-402113de6b6f",
+              "leftValue": "={{ $('9. Dedup Check').first().json.urgency }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "53ddae6a-ac48-4f86-b25b-cd6f02e3d268",
+              "leftValue": "={{ String($('9. Dedup Check').first().json.is_duplicate) }}",
+              "rightValue": "false",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -704,
+        320
+      ],
+      "id": "26596da3-523f-4790-9666-7428251a4a1b",
+      "name": "10. Check Urgency & Dedup"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 10a. Prepare Alert Fields\n// The Sheets node returns only the written row, so read the full record from node 9.\n// Everything printed into the HTML email is escaped here.\nconst rec = $('9. Dedup Check').first().json;\n\nfunction esc(v) {\n  return String(v === null || v === undefined ? '' : v)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/'/g, '&#39;');\n}\nfunction plain(v, max) {\n  const s = String(v === null || v === undefined ? '' : v).replace(/[\\s\\u0000-\\u001f\\u007f]+/g, ' ').trim();\n  return Array.from(s).slice(0, max).join('');\n}\n\nconst manual = rec.ai_status !== 'ok';\nconst banner = manual\n  ? '<p style=\"background: #fdecea; color: #c0392b; padding: 10px; border-left: 4px solid #c0392b;\"><strong>Manual review required:</strong> the AI analysis was unavailable or unreadable for this record (ai_status: ' + esc(rec.ai_status) + '). The analysis fields below are defaults.</p>'\n  : '';\n\nreturn [{\n  json: {\n    customer_id: esc(rec.customer_id),\n    record_id: esc(rec.record_id),\n    source: esc(rec.source),\n    location_mentioned: esc(rec.location_mentioned),\n    issue_categories: esc(rec.issue_categories),\n    business_signal: esc(rec.business_signal),\n    urgency: esc(rec.urgency),\n    churn_risk: esc(rec.churn_risk),\n    sentiment: esc(rec.sentiment),\n    root_cause_summary: esc(rec.root_cause_summary),\n    retention_offer_type: esc(rec.retention_offer_type),\n    retention_priority: esc(rec.retention_priority),\n    retention_message: esc(rec.retention_message),\n    original_text: esc(rec.original_text),\n    dedup_check_time: esc(rec.dedup_check_time),\n    dedup_window_hours: esc(rec.dedup_window_hours),\n    target_department: rec.target_department,\n    review_banner: banner,\n    // Plain-text values for email subjects (single line, no feedback text)\n    subject_customer: plain(rec.customer_id, 60),\n    subject_location: plain(rec.location_mentioned, 60),\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        320
+      ],
+      "id": "4d03bd6b-ba1a-4fe8-bde6-e6ccc5eb8ea2",
+      "name": "10a. Prepare Alert Fields"
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 5,
+        "output": "={{ $json.target_department === 'operations' ? 0 : $json.target_department === 'finance' ? 1 : $json.target_department === 'sales' ? 2 : $json.target_department === 'marketing' ? 3 : 4 }}"
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -256,
+        320
+      ],
+      "id": "17ab0874-6f4e-4b43-91ab-8ab857a1c3a8",
+      "name": "11. Route Alert to Department"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.operations_email }}",
+        "subject": "=\ud83d\udea8 [OPS ALERT] Coverage Issue - {{ $json.subject_customer }} - {{ $json.subject_location || 'Location TBD' }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 700px; padding: 20px;\"><h2 style=\"color: #c0392b; border-bottom: 2px solid #c0392b; padding-bottom: 10px;\">\ud83d\udea8 Network Operations Alert</h2>{{ $json.review_banner }}<p><strong>A high-urgency network coverage complaint has been flagged by the Orbitel Marketing AI Agent.</strong></p><h3 style=\"color: #2c3e50;\">Customer Details</h3><table style=\"border-collapse: collapse; width: 100%; margin: 10px 0;\"><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Customer ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.customer_id }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Record ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.record_id }}</td></tr><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Location</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.location_mentioned || 'Not specified' }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Source</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.source }}</td></tr></table><h3 style=\"color: #2c3e50;\">AI Analysis</h3><p><strong>Issue Categories:</strong> {{ $json.issue_categories }}</p><p><strong>Business Signal:</strong> {{ $json.business_signal }}</p><p><strong>Urgency:</strong> <span style=\"color: #c0392b; font-weight: bold;\">{{ $json.urgency }}</span></p><p><strong>Churn Risk:</strong> {{ $json.churn_risk }}</p><h3 style=\"color: #2c3e50;\">Root Cause Summary</h3><p style=\"background: #ecf0f1; padding: 15px; border-left: 4px solid #3498db;\">{{ $json.root_cause_summary }}</p><h3 style=\"color: #2c3e50;\">Recommended Actions for Network Operations</h3><ul><li>Deploy network diagnostics team to the affected area</li><li>Review tower load data for {{ $json.location_mentioned || 'the customer region' }}</li><li>Evaluate signal strength and check if coverage expansion is justified</li><li>Cross-reference with master sheet for complaint clusters in the same area</li></ul><h3 style=\"color: #2c3e50;\">Original Customer Feedback</h3><blockquote style=\"background: #fff; padding: 15px; border-left: 4px solid #95a5a6; font-style: italic;\">{{ $json.original_text }}</blockquote><hr style=\"margin: 20px 0; border: none; border-top: 1px solid #ddd;\"><p style=\"color: #7f8c8d; font-size: 12px;\">Automatically generated by the Orbitel Marketing AI Agent<br>Processed at: {{ $json.dedup_check_time }}<br>Dedup window: {{ $json.dedup_window_hours }} hours</p></div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "178d6c20-172f-430c-afc4-80ff5c25a034",
+      "name": "12a. Email \u2192 Operations",
+      "webhookId": "80a5bf2e-619e-42f8-a0e5-f30a2ad5ed7b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAILOAUTH2_CREDENTIAL_ID",
+          "name": "gmailOAuth2 Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.finance_email }}",
+        "subject": "=\ud83d\udcb0 [FINANCE ALERT] Billing Dispute - {{ $json.subject_customer }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 700px; padding: 20px;\"><h2 style=\"color: #27ae60; border-bottom: 2px solid #27ae60; padding-bottom: 10px;\">\ud83d\udcb0 Finance Team Alert</h2>{{ $json.review_banner }}<p><strong>A high-urgency billing issue has been flagged by the Orbitel Marketing AI Agent.</strong></p><h3 style=\"color: #2c3e50;\">Customer &amp; Account Details</h3><table style=\"border-collapse: collapse; width: 100%; margin: 10px 0;\"><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Customer ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.customer_id }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Record ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.record_id }}</td></tr><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Source</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.source }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Issue Categories</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.issue_categories }}</td></tr></table><h3 style=\"color: #2c3e50;\">Root Cause</h3><p style=\"background: #ecf0f1; padding: 15px; border-left: 4px solid #27ae60;\">{{ $json.root_cause_summary }}</p><h3 style=\"color: #2c3e50;\">Recommended Actions for Finance Team</h3><ul><li>Pull customer's last 3 invoices and payment history</li><li>Verify claimed charges against actual billing records</li><li>If dispute is valid, initiate refund/adjustment process</li><li>Check customer's credit standing (coordinate with Credit Risk scoring from Financial Analyst)</li><li>Respond to customer within 48 hours to avoid PTA escalation</li></ul><h3 style=\"color: #2c3e50;\">Customer Complaint</h3><blockquote style=\"background: #fff; padding: 15px; border-left: 4px solid #95a5a6; font-style: italic;\">{{ $json.original_text }}</blockquote><hr style=\"margin: 20px 0; border: none; border-top: 1px solid #ddd;\"><p style=\"color: #7f8c8d; font-size: 12px;\">Orbitel Marketing AI Agent | {{ $json.dedup_check_time }}</p></div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        160
+      ],
+      "id": "885dc9de-20c5-4e0d-b34a-41bce02023cb",
+      "name": "12b. Email \u2192 Finance",
+      "webhookId": "64a986ce-cbb9-433d-846f-296381d7a001",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAILOAUTH2_CREDENTIAL_ID",
+          "name": "gmailOAuth2 Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.sales_email }}",
+        "subject": "=\ud83d\udcbc [SALES LEAD] Upsell Opportunity - {{ $json.subject_customer }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 700px; padding: 20px;\"><h2 style=\"color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 10px;\">\ud83d\udcbc Sales Opportunity Detected</h2>{{ $json.review_banner }}<p><strong>The Marketing AI Agent has identified a potential sales opportunity from a customer inquiry.</strong></p><h3 style=\"color: #2c3e50;\">Lead Details</h3><table style=\"border-collapse: collapse; width: 100%; margin: 10px 0;\"><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Customer ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.customer_id }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Interest Area</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.issue_categories }}</td></tr><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Business Signal</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.business_signal }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Location</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.location_mentioned || 'Not specified' }}</td></tr><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Recommended Offer</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.retention_offer_type }}</td></tr></table><h3 style=\"color: #2c3e50;\">Opportunity Analysis</h3><p style=\"background: #ecf0f1; padding: 15px; border-left: 4px solid #2980b9;\">{{ $json.root_cause_summary }}</p><h3 style=\"color: #2c3e50;\">Pre-Drafted Outreach Message</h3><p style=\"background: #e8f6f3; padding: 15px; border-left: 4px solid #1abc9c;\">{{ $json.retention_message }}</p><h3 style=\"color: #2c3e50;\">Recommended Actions for Sales Team</h3><ul><li>Contact customer within 24 hours while interest is fresh</li><li>Prepare a tailored quote based on their stated need</li><li>Check eligibility for the suggested plan/bundle</li><li>Log this lead in the Sales pipeline (coordinate with Sales Analyst's lead tracker)</li><li>Schedule follow-up if no response within 3 days</li></ul><h3 style=\"color: #2c3e50;\">Original Customer Inquiry</h3><blockquote style=\"background: #fff; padding: 15px; border-left: 4px solid #95a5a6; font-style: italic;\">{{ $json.original_text }}</blockquote><hr style=\"margin: 20px 0; border: none; border-top: 1px solid #ddd;\"><p style=\"color: #7f8c8d; font-size: 12px;\">Orbitel Marketing AI Agent | {{ $json.dedup_check_time }}</p></div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        320
+      ],
+      "id": "8725550f-6f31-405f-9805-76af993d2205",
+      "name": "12c. Email \u2192 Sales",
+      "webhookId": "e21b64bb-d82d-4542-8ecb-3206787f1d81",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAILOAUTH2_CREDENTIAL_ID",
+          "name": "gmailOAuth2 Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.marketing_email }}",
+        "subject": "=\ud83d\udce2 [MARKETING ALERT] Churn Risk / Pricing Feedback - {{ $json.subject_customer }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 700px; padding: 20px;\"><h2 style=\"color: #8e44ad; border-bottom: 2px solid #8e44ad; padding-bottom: 10px;\">\ud83d\udce2 Marketing Team Alert</h2>{{ $json.review_banner }}<p><strong>A customer has raised pricing/competitive concerns that require marketing intervention.</strong></p><h3 style=\"color: #2c3e50;\">Customer Profile</h3><table style=\"border-collapse: collapse; width: 100%; margin: 10px 0;\"><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Customer ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.customer_id }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Churn Risk</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\"><span style=\"color: red; font-weight: bold;\">{{ $json.churn_risk }}</span></td></tr><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Sentiment</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.sentiment }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Issue Categories</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.issue_categories }}</td></tr></table><h3 style=\"color: #2c3e50;\">Strategic Insights</h3><p style=\"background: #ecf0f1; padding: 15px; border-left: 4px solid #8e44ad;\">{{ $json.root_cause_summary }}</p><h3 style=\"color: #2c3e50;\">Suggested Retention Offer</h3><table style=\"border-collapse: collapse; width: 100%; margin: 10px 0;\"><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Offer Type</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.retention_offer_type }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Priority</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.retention_priority }}</td></tr></table><p style=\"background: #fef9e7; padding: 15px; border-left: 4px solid #f39c12;\">{{ $json.retention_message }}</p><h3 style=\"color: #2c3e50;\">Recommended Actions for Marketing Team</h3><ul><li>Review competitor pricing (Jazz, Telenor, Zong) for the affected product</li><li>Deploy the suggested retention offer immediately</li><li>Add customer to win-back nurture campaign</li><li>Aggregate similar pricing complaints \u2014 assess whether a pricing strategy review is needed</li><li>Coordinate with Financial Analyst to check impact on margin if offers scale up</li></ul><h3 style=\"color: #2c3e50;\">Customer Feedback</h3><blockquote style=\"background: #fff; padding: 15px; border-left: 4px solid #95a5a6; font-style: italic;\">{{ $json.original_text }}</blockquote><hr style=\"margin: 20px 0; border: none; border-top: 1px solid #ddd;\"><p style=\"color: #7f8c8d; font-size: 12px;\">Orbitel Marketing AI Agent | {{ $json.dedup_check_time }}</p></div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        480
+      ],
+      "id": "dffff072-67e9-4f94-90d6-4300c6670f87",
+      "name": "12d. Email \u2192 Marketing",
+      "webhookId": "2232ae13-a31e-49fa-a5c7-3ebbaefe59c7",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAILOAUTH2_CREDENTIAL_ID",
+          "name": "gmailOAuth2 Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.hr_email }}",
+        "subject": "=\ud83d\udc65 [HR ALERT] Agent Escalation - {{ $json.subject_customer }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 700px; padding: 20px;\"><h2 style=\"color: #d35400; border-bottom: 2px solid #d35400; padding-bottom: 10px;\">\ud83d\udc65 HR / Quality Assurance Alert</h2>{{ $json.review_banner }}<p><strong>A customer has escalated an issue involving a call center or support agent. This requires quality review.</strong></p><h3 style=\"color: #2c3e50;\">Escalation Details</h3><table style=\"border-collapse: collapse; width: 100%; margin: 10px 0;\"><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Customer ID</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.customer_id }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Source</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.source }}</td></tr><tr style=\"background: #f4f4f4;\"><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Issue Categories</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\">{{ $json.issue_categories }}</td></tr><tr><td style=\"padding: 8px; border: 1px solid #ddd;\"><strong>Urgency</strong></td><td style=\"padding: 8px; border: 1px solid #ddd;\"><span style=\"color: #d35400; font-weight: bold;\">{{ $json.urgency }}</span></td></tr></table><h3 style=\"color: #2c3e50;\">Incident Summary</h3><p style=\"background: #ecf0f1; padding: 15px; border-left: 4px solid #d35400;\">{{ $json.root_cause_summary }}</p><h3 style=\"color: #2c3e50;\">Recommended Actions for HR Team</h3><ul><li>Identify the agent involved (cross-reference call/interaction logs by timestamp)</li><li>Pull the recording for quality review</li><li>Schedule a coaching session if behavior is confirmed</li><li>Check if this agent has multiple similar complaints (pattern detection)</li><li>Coordinate with HR Analyst's Collection Workforce stress indicators</li><li>Reach out to the customer with a personal apology and service recovery</li></ul><h3 style=\"color: #2c3e50;\">Customer's Report</h3><blockquote style=\"background: #fff; padding: 15px; border-left: 4px solid #95a5a6; font-style: italic;\">{{ $json.original_text }}</blockquote><hr style=\"margin: 20px 0; border: none; border-top: 1px solid #ddd;\"><p style=\"color: #7f8c8d; font-size: 12px;\">Orbitel Marketing AI Agent | {{ $json.dedup_check_time }}</p></div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        640
+      ],
+      "id": "0990c96f-2c1a-4a85-8176-7f10e02f3c84",
+      "name": "12e. Email \u2192 HR",
+      "webhookId": "432c6ccf-2269-4973-8b06-9d32ebb81768",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAILOAUTH2_CREDENTIAL_ID",
+          "name": "gmailOAuth2 Account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "1. Webhook - Receive Feedback": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "2. Validate & Clean Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Validate & Clean Input": {
+      "main": [
+        [
+          {
+            "node": "2b. Input Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2b. Input Valid?": {
+      "main": [
+        [
+          {
+            "node": "3. AI Analysis (GPT-4o-mini)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "2c. Respond - Validation Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. AI Analysis (GPT-4o-mini)": {
+      "main": [
+        [
+          {
+            "node": "4. Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "8. Fetch Customer History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "8. Fetch Customer History": {
+      "main": [
+        [
+          {
+            "node": "9. Dedup Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "9. Dedup Check": {
+      "main": [
+        [
+          {
+            "node": "7. Log to Master Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Log to Master Sheet": {
+      "main": [
+        [
+          {
+            "node": "7b. Respond - Success",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "10. Check Urgency & Dedup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "7c. Respond - Internal Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "10. Check Urgency & Dedup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10. Check Urgency & Dedup": {
+      "main": [
+        [
+          {
+            "node": "10a. Prepare Alert Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "10a. Prepare Alert Fields": {
+      "main": [
+        [
+          {
+            "node": "11. Route Alert to Department",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "11. Route Alert to Department": {
+      "main": [
+        [
+          {
+            "node": "12a. Email \u2192 Operations",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12b. Email \u2192 Finance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12c. Email \u2192 Sales",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12d. Email \u2192 Marketing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "12e. Email \u2192 HR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1,
+    "availableInMCP": false
+  },
+  "versionId": "3b7644f4-591e-433f-ba9a-a5f2a3fb080c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "orbitel-enterprise-instance"
+  },
+  "nodeGroups": [],
+  "id": "lCXqKR2eUhbkrdt9",
+  "tags": []
+}

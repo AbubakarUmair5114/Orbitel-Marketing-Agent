@@ -1,0 +1,197 @@
+/*
+========================================================================================
+ORBITEL AUTOMATED CUSTOMER SENTIMENT & CHURN RISK INTELLIGENCE ENGINE
+ENTERPRISE POWER BI DAX MEASURES & CALCULATED COLUMNS
+========================================================================================
+Target Dataset: 'Sheet1' (Google Sheets Master Ledger / Data Lake Export)
+Version: Production 2.0 (Executive Bento Grid Scorecard)
+Author: AI Automation & Analytics Specialist
+========================================================================================
+*/
+
+// ========================================================================================
+// SECTION 1: CORE VOLUME & EXECUTIVE KPI MEASURES (TOP KPI RIBBON)
+// ========================================================================================
+
+/// <summary>
+/// Total count of customer feedback records ingested through the automated intelligence engine.
+/// Scorecard Display: 21
+/// </summary>
+Total_Records = 
+COUNTROWS('Sheet1')
+
+/// <summary>
+/// Percentage of ingested records classified with Positive customer sentiment.
+/// Scorecard Display: 33.3% (Callout Color: Positive Green #27ae60, 1 Decimal Place)
+/// </summary>
+Positive_Sentiment_Pct = 
+DIVIDE(
+    CALCULATE(COUNTROWS('Sheet1'), 'Sheet1'[sentiment] = "positive"),
+    COUNTROWS('Sheet1'),
+    0
+)
+
+/// <summary>
+/// Percentage of ingested records classified with Negative customer sentiment (Dissatisfaction Rate).
+/// Scorecard Display: 52.4% (Callout Color: Dark Charcoal #0F172A, 1 Decimal Place)
+/// </summary>
+Negative_Sentiment_Pct = 
+DIVIDE(
+    CALCULATE(COUNTROWS('Sheet1'), 'Sheet1'[sentiment] = "negative"),
+    COUNTROWS('Sheet1'),
+    0
+)
+
+/// <summary>
+/// Percentage of ingested records classified with Neutral customer sentiment.
+/// Used in Sentiment Mix Donut Chart: 14.3% (Callout Color: Muted Slate #94A3B8)
+/// </summary>
+Neutral_Sentiment_Pct = 
+DIVIDE(
+    CALCULATE(COUNTROWS('Sheet1'), 'Sheet1'[sentiment] = "neutral"),
+    COUNTROWS('Sheet1'),
+    0
+)
+
+/// <summary>
+/// Percentage of customers flagged with immediate Churn Risk by GPT-4o-mini multi-variable extraction.
+/// Scorecard Display: 47.6% (Callout Color: Alert Red #c0392b, Formatted as Percentage with 1 Decimal Place)
+/// </summary>
+Churn_Rate_Pct = 
+DIVIDE(
+    CALCULATE(COUNTROWS('Sheet1'), 'Sheet1'[churn_risk] = TRUE()),
+    COUNTROWS('Sheet1'),
+    0
+)
+
+/// <summary>
+/// Average confidence score of the GPT-4o-mini classification agent across all processed records.
+/// Scorecard Display: 0.89 (Callout Color: Slate Dark #1E293B, 2 Decimal Places)
+/// Validates model precision and threshold consistency.
+/// </summary>
+Avg_Confidence_Score = 
+AVERAGE('Sheet1'[confidence_score])
+
+
+// ========================================================================================
+// SECTION 2: OPERATIONAL & DEPARTMENT ESCALATION MEASURES
+// ========================================================================================
+
+/// <summary>
+/// Count of high-risk customer records requiring real-time escalation.
+/// Placed on X-Axis for Department Escalations & Churn Drivers visual.
+/// </summary>
+High_Risk_Escalations_Count = 
+CALCULATE(
+    COUNTROWS('Sheet1'),
+    'Sheet1'[churn_risk] = TRUE()
+)
+
+/// <summary>
+/// Count of records flagged with High Urgency (either via regex heuristic override or LLM extraction).
+/// </summary>
+High_Urgency_Count = 
+CALCULATE(
+    COUNTROWS('Sheet1'),
+    'Sheet1'[urgency] = "high"
+)
+
+/// <summary>
+/// Count of records flagged for immediate triage table (churn_risk = TRUE OR urgency = "high").
+/// </summary>
+Triage_Queue_Count = 
+CALCULATE(
+    COUNTROWS('Sheet1'),
+    'Sheet1'[churn_risk] = TRUE() || 'Sheet1'[urgency] = "high"
+)
+
+/// <summary>
+/// Operations Department Churn Risk Count (Leading churn driver category: network & coverage issues).
+/// </summary>
+Ops_Churn_Count = 
+CALCULATE(
+    COUNTROWS('Sheet1'),
+    'Sheet1'[target_department] = "operations" && 'Sheet1'[churn_risk] = TRUE()
+)
+
+/// <summary>
+/// Finance Department Churn Risk Count (Secondary churn driver: billing disputes & unauthorized charges).
+/// </summary>
+Finance_Churn_Count = 
+CALCULATE(
+    COUNTROWS('Sheet1'),
+    'Sheet1'[target_department] = "finance" && 'Sheet1'[churn_risk] = TRUE()
+)
+
+/// <summary>
+/// Marketing Department Churn Risk Count (Tertiary churn driver: competitor pricing & tariff inflation).
+/// </summary>
+Marketing_Churn_Count = 
+CALCULATE(
+    COUNTROWS('Sheet1'),
+    'Sheet1'[target_department] = "marketing" && 'Sheet1'[churn_risk] = TRUE()
+)
+
+
+// ========================================================================================
+// SECTION 3: CALCULATED COLUMNS (DATA MODEL ENRICHMENT)
+// ========================================================================================
+
+/// <summary>
+/// Binary risk categorization for stacked charts and slicing.
+/// Values: "High Risk" (Alert Red) vs "Low Risk" (Slate Gray).
+/// </summary>
+Churn_Status = 
+IF('Sheet1'[churn_risk] = TRUE(), "High Risk", "Low Risk")
+
+/// <summary>
+/// Month and Year string formatting for chronological time-series tracking.
+/// Generates: "Aug 2026", "Sep 2026", "Oct 2026".
+/// Ensure sort order is governed by 'YearMonth_Sort' column.
+/// </summary>
+Month_Year = 
+FORMAT('Sheet1'[timestamp], "MMM YYYY")
+
+/// <summary>
+/// Integer sort key for Month_Year column (e.g., 202608, 202609, 202610).
+/// In Power BI: Select 'Month_Year' -> Column Tools -> Sort by Column -> 'YearMonth_Sort'.
+/// </summary>
+YearMonth_Sort = 
+YEAR('Sheet1'[timestamp]) * 100 + MONTH('Sheet1'[timestamp])
+
+/// <summary>
+/// Cleaned geographic location string extracting the primary city or territory name.
+/// Handles nulls gracefully and truncates sub-locality noise for clean grouping.
+/// </summary>
+Location_Clean = 
+IF(
+    ISBLANK('Sheet1'[location_mentioned]) || 'Sheet1'[location_mentioned] = "unknown" || 'Sheet1'[location_mentioned] = "", 
+    "Unknown", 
+    TRIM(LEFT('Sheet1'[location_mentioned], SEARCH(" ", 'Sheet1'[location_mentioned] & " ") - 1))
+)
+
+/// <summary>
+/// Priority indicator for the executive triage table.
+/// Flags records requiring immediate C-Level / VP intervention.
+/// </summary>
+Triage_Flag = 
+IF(
+    'Sheet1'[churn_risk] = TRUE() || 'Sheet1'[urgency] = "high",
+    "URGENT TRIAGE",
+    "STANDARD"
+)
+
+/// <summary>
+/// Standardized customer value segment name for chart axes.
+/// Normalizes casing: Low, Medium, High, Premium, Unknown.
+/// </summary>
+Customer_Value_Segment_Display = 
+SWITCH(
+    LOWER(TRIM('Sheet1'[customer_value_segment])),
+    "low", "Low",
+    "medium", "Medium",
+    "high", "High",
+    "premium", "Premium",
+    "Unknown"
+)
+

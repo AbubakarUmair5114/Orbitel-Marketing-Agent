@@ -1,0 +1,132 @@
+{
+  "name": "Orbitel Executive Bento Grid",
+  "dataColors": [
+    "#c0392b",
+    "#27ae60",
+    "#0F172A",
+    "#2980b9",
+    "#8e44ad",
+    "#64748B",
+    "#94A3B8",
+    "#f39c12",
+    "#1E293B",
+    "#e74c3c"
+  ],
+  "background": "#F8FAFC",
+  "foreground": "#0F172A",
+  "tableAccent": "#1E293B",
+  "textClasses": {
+    "callout": {
+      "fontSize": 28,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#0F172A"
+    },
+    "title": {
+      "fontSize": 14,
+      "fontFace": "Segoe UI Bold",
+      "color": "#1E293B"
+    },
+    "header": {
+      "fontSize": 11,
+      "fontFace": "Segoe UI Semibold",
+      "color": "#64748B"
+    },
+    "label": {
+      "fontSize": 10,
+      "fontFace": "Segoe UI",
+      "color": "#334155"
+    }
+  },
+  "visualStyles": {
+    "*": {
+      "*": {
+        "outspace": [
+          {
+            "color": { "solid": { "color": "#F8FAFC" } }
+          }
+        ],
+        "border": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#E2E8F0" } },
+            "radius": 8
+          }
+        ],
+        "dropShadow": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#000000" } },
+            "transparency": 94,
+            "position": "Outer",
+            "preset": "BottomRight"
+          }
+        ],
+        "background": [
+          {
+            "show": true,
+            "color": { "solid": { "color": "#FFFFFF" } },
+            "transparency": 0
+          }
+        ],
+        "title": [
+          {
+            "show": true,
+            "fontColor": { "solid": { "color": "#1E293B" } },
+            "fontSize": 13,
+            "fontFamily": "Segoe UI Semibold"
+          }
+        ]
+      }
+    },
+    "card": {
+      "*": {
+        "labels": [
+          {
+            "fontFamily": "Segoe UI Bold",
+            "fontSize": 26
+          }
+        ],
+        "categoryLabels": [
+          {
+            "show": true,
+            "fontFamily": "Segoe UI Semibold",
+            "fontSize": 10,
+            "color": { "solid": { "color": "#64748B" } }
+          }
+        ]
+      }
+    },
+    "tableEx": {
+      "*": {
+        "columnHeaders": [
+          {
+            "fontColor": { "solid": { "color": "#FFFFFF" } },
+            "backColor": { "solid": { "color": "#1E293B" } },
+            "fontFamily": "Segoe UI Bold",
+            "fontSize": 10,
+            "alignment": "Left"
+          }
+        ],
+        "values": [
+          {
+            "fontColorPrimary": { "solid": { "color": "#1E293B" } },
+            "backColorPrimary": { "solid": { "color": "#FFFFFF" } },
+            "fontColorSecondary": { "solid": { "color": "#1E293B" } },
+            "backColorSecondary": { "solid": { "color": "#F8FAFC" } },
+            "fontFamily": "Segoe UI",
+            "fontSize": 9
+          }
+        ],
+        "grid": [
+          {
+            "gridVertical": false,
+            "gridHorizontal": true,
+            "gridHorizontalColor": { "solid": { "color": "#E2E8F0" } },
+            "rowPadding": 6
+          }
+        ]
+      }
+    }
+  }
+}
+

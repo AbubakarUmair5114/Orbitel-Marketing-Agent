@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Finance Billing Escalation Alert</title>
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f8fafc; font-family: 'Segoe UI', Arial, sans-serif;">
+  <div style="max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+    <div style="background: #27ae60; padding: 18px 24px; color: #ffffff;">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700;">💰 [FINANCE ALERT] High-Priority Billing Dispute & Churn Risk</h2>
+      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Orbitel Automated Customer Sentiment & Churn Risk Engine</p>
+    </div>
+
+    {{ review_banner }}
+
+    <div style="padding: 24px;">
+      <h3 style="color: #1e293b; font-size: 15px; margin-top: 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Customer & Account Information</h3>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+        <tr style="background: #f8fafc;"><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600; width: 35%;">Customer ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{{ customer_id }}</td></tr>
+        <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Record ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">{{ record_id }}</td></tr>
+        <tr style="background: #f8fafc;"><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Issue Categories</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{{ issue_categories }}</td></tr>
+        <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Business Signal</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600; color: #27ae60;">{{ business_signal }}</td></tr>
+      </table>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Root Cause Summary</h3>
+      <div style="background: #ecf0f1; padding: 14px 16px; border-left: 4px solid #27ae60; border-radius: 0 4px 4px 0; margin-bottom: 20px; font-size: 13.5px; line-height: 1.5;">
+        {{ root_cause_summary }}
+      </div>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Finance Department Action Protocol</h3>
+      <ul style="color: #334155; font-size: 13px; line-height: 1.6; padding-left: 20px; margin-bottom: 20px;">
+        <li>Pull customer's previous 3 billing cycles and mediation call data records (CDRs).</li>
+        <li>Audit disputed line items (e.g., unauthorized roaming data, double line rental, third-party VAS charges).</li>
+        <li>Authorize invoice adjustment or issue automated ledger credit note within 24 hours.</li>
+        <li>Place temporary hold on collection dunning and late-payment service suspension.</li>
+        <li>Confirm SLA resolution within 48 hours to avert Pakistan Telecommunication Authority (PTA) escalation.</li>
+      </ul>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Customer Statement</h3>
+      <blockquote style="background: #f8fafc; border-left: 4px solid #94a3b8; padding: 12px 16px; margin: 0 0 20px 0; font-style: italic; color: #475569; font-size: 13px;">
+        "{{ original_text }}"
+      </blockquote>
+
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 14px; color: #94a3b8; font-size: 11px;">
+        Orbitel AI Finance Escalation Desk • Processed: {{ dedup_check_time }}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Operations Escalation Alert</title>
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f8fafc; font-family: 'Segoe UI', Arial, sans-serif;">
+  <div style="max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+    <div style="background: #c0392b; padding: 18px 24px; color: #ffffff;">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">🚨 [OPS ALERT] High-Urgency Network Operations Escalation</h2>
+      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Orbitel Automated Customer Sentiment & Churn Risk Engine</p>
+    </div>
+
+    <!-- Review Banner if AI analysis degraded -->
+    {{ review_banner }}
+
+    <div style="padding: 24px;">
+      <div style="background: #fdecea; border-left: 4px solid #c0392b; padding: 12px 16px; margin-bottom: 20px; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; color: #721c24; font-size: 14px; font-weight: 600;">Immediate action required: High-urgency network or coverage failure flagged with active churn risk.</p>
+      </div>
+
+      <h3 style="color: #1e293b; font-size: 15px; margin-top: 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Customer & Telemetry Details</h3>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+        <tr style="background: #f8fafc;"><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600; width: 35%;">Customer ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{{ customer_id }}</td></tr>
+        <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Record ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-family: monospace;">{{ record_id }}</td></tr>
+        <tr style="background: #f8fafc;"><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Location Mentioned</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 700; color: #c0392b;">{{ location_mentioned }}</td></tr>
+        <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Source Channel</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{{ source }}</td></tr>
+        <tr style="background: #f8fafc;"><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Issue Categories</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{{ issue_categories }}</td></tr>
+        <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Urgency / Churn Risk</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;"><span style="color: #c0392b; font-weight: 700;">{{ urgency }}</span> / Churn Risk: <strong>{{ churn_risk }}</strong></td></tr>
+      </table>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">AI Root Cause Summary</h3>
+      <div style="background: #ecf0f1; padding: 14px 16px; border-left: 4px solid #3498db; border-radius: 0 4px 4px 0; margin-bottom: 20px; font-size: 13.5px; line-height: 1.5; color: #2c3e50;">
+        {{ root_cause_summary }}
+      </div>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Mandatory Operations Protocol Checklist</h3>
+      <ul style="color: #334155; font-size: 13px; line-height: 1.6; padding-left: 20px; margin-bottom: 20px;">
+        <li>Deploy field RF / optical diagnostics crew to {{ location_mentioned }}.</li>
+        <li>Review BTS sector load and throughput logs on local tower mast.</li>
+        <li>Evaluate signal degradation threshold and ascertain if emergency cell booster is warranted.</li>
+        <li>Query Google Sheets master ledger for concurrent customer tickets within identical azimuth.</li>
+      </ul>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Verbatim Customer Feedback</h3>
+      <blockquote style="background: #f8fafc; border-left: 4px solid #94a3b8; padding: 12px 16px; margin: 0 0 20px 0; font-style: italic; color: #475569; font-size: 13px;">
+        "{{ original_text }}"
+      </blockquote>
+
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 14px; color: #94a3b8; font-size: 11px; display: flex; justify-content: space-between;">
+        <span>Orbitel AI Automation Agent • Processed: {{ dedup_check_time }}</span>
+        <span>Dedup Window: {{ dedup_window_hours }}h</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+

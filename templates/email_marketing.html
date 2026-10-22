@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Marketing Churn Risk Alert</title>
+</head>
+<body style="margin: 0; padding: 20px; background-color: #f8fafc; font-family: 'Segoe UI', Arial, sans-serif;">
+  <div style="max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+    <div style="background: #8e44ad; padding: 18px 24px; color: #ffffff;">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 700;">📢 [MARKETING ALERT] Churn Risk & Competitor Acquisition Trigger</h2>
+      <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Orbitel Automated Customer Sentiment & Churn Risk Engine</p>
+    </div>
+
+    {{ review_banner }}
+
+    <div style="padding: 24px;">
+      <div style="background: #fbf5fd; border-left: 4px solid #8e44ad; padding: 12px 16px; margin-bottom: 20px; border-radius: 0 4px 4px 0;">
+        <p style="margin: 0; color: #4a235a; font-size: 14px; font-weight: 600;">High-Value Account Retaining Warning: Immediate retention intervention required.</p>
+      </div>
+
+      <h3 style="color: #1e293b; font-size: 15px; margin-top: 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Customer Retention Profile</h3>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px;">
+        <tr style="background: #f8fafc;"><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600; width: 35%;">Customer ID</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0;">{{ customer_id }}</td></tr>
+        <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Churn Risk</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; color: #c0392b; font-weight: 700;">{{ churn_risk }}</td></tr>
+        <tr style="background: #f8fafc;"><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Retention Offer Type</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 700; color: #8e44ad;">{{ retention_offer_type }}</td></tr>
+        <tr><td style="padding: 8px 12px; border: 1px solid #e2e8f0; font-weight: 600;">Intervention Priority</td><td style="padding: 8px 12px; border: 1px solid #e2e8f0; text-transform: uppercase; font-weight: 700; color: #c0392b;">{{ retention_priority }}</td></tr>
+      </table>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Strategic Intelligence Summary</h3>
+      <div style="background: #ecf0f1; padding: 14px 16px; border-left: 4px solid #8e44ad; border-radius: 0 4px 4px 0; margin-bottom: 20px; font-size: 13.5px; line-height: 1.5;">
+        {{ root_cause_summary }}
+      </div>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">AI Suggested Win-Back Message</h3>
+      <div style="background: #fef9e7; padding: 14px 16px; border-left: 4px solid #f39c12; border-radius: 0 4px 4px 0; margin-bottom: 20px; font-size: 13px; color: #7d6608;">
+        {{ retention_message }}
+      </div>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Marketing Department Action Checklist</h3>
+      <ul style="color: #334155; font-size: 13px; line-height: 1.6; padding-left: 20px; margin-bottom: 20px;">
+        <li>Review competitor tariff benchmarks (Jazz, Telenor, Zong) matching customer usage profile.</li>
+        <li>Deploy approved retention discount or bonus data allotment via billing CRM.</li>
+        <li>Enroll customer ID in VIP priority care whitelist.</li>
+        <li>Flag pattern in marketing product committee to evaluate macroeconomic tariff elasticity.</li>
+      </ul>
+
+      <h3 style="color: #1e293b; font-size: 15px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">Customer Statement</h3>
+      <blockquote style="background: #f8fafc; border-left: 4px solid #94a3b8; padding: 12px 16px; margin: 0 0 20px 0; font-style: italic; color: #475569; font-size: 13px;">
+        "{{ original_text }}"
+      </blockquote>
+
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 14px; color: #94a3b8; font-size: 11px;">
+        Orbitel AI Marketing & Retention Intelligence Desk • Processed: {{ dedup_check_time }}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+
