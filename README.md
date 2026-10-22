@@ -50,6 +50,8 @@ Operating at the intersection of **AI workflow automation (n8n)**, **cognitive l
 
 ## 1. System Architecture & Engineering Components
 
+![Orbitel Automated Feedback Intelligence Engine n8n Workflow Architecture](docs/images/n8n_workflow_canvas.png)
+
 ### Component 1: Real-Time Webhook Ingestion & Strict Validation
 - **Ingestion Endpoint:** Asynchronous webhook listener listening for incoming customer feedback payloads (`POST /webhook/receive-feedback`).
 - **Strict Schema Enforcement:** Deterministic validation validating `text`, `customer_id`, `customer_type`, `service_type`, and `source`.
