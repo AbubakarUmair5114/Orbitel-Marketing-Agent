@@ -1,8 +1,10 @@
-# Orbitel Automated Customer Sentiment & Churn Risk Intelligence Engine
+<img width="1852" height="853" alt="image" src="https://github.com/user-attachments/assets/893ab4ef-420e-4be1-b22a-fc33d8ee84b9" /># Orbitel Automated Customer Sentiment & Churn Risk Intelligence Engine
 > **Enterprise AI Automation & Executive Business Intelligence Flagship Portfolio**  
 > **Role Targeted:** AI Automation & Analytics Specialist (Reporting Directly to Company Owner)  
 > **Author:** AI Automation & Analytics Specialist  
 > **Live Production Artifacts:** [n8n Workflow](file:///c:/Users/ABC/Orbitel-marketing_agent/workflows/orbitel_feedback_intelligence_engine.json) • [Power BI Scorecard Mockup](file:///c:/Users/ABC/Orbitel-marketing_agent/powerbi/orbitel_executive_scorecard_mockup.html) • [Master Dataset](file:///c:/Users/ABC/Orbitel-marketing_agent/data/orbitel_master_dataset_21_records.csv) • [DAX Measures](file:///c:/Users/ABC/Orbitel-marketing_agent/powerbi/dax_measures_and_columns.dax)
+
+> **Walk-Through Video Link:** https://drive.google.com/file/d/1E0GpiC9lGkZNM5mF92h4fH_Fjtmu_lE2/view?usp=sharing
 
 ---
 
