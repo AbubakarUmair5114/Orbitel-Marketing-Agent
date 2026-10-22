@@ -12,6 +12,8 @@ The **Orbitel Automated Customer Sentiment & Churn Risk Intelligence Engine** is
 
 Operating at the intersection of **AI workflow automation (n8n)**, **cognitive language modeling (OpenAI GPT-4o-mini)**, **cloud data persistence (Google Sheets / GCP Service Accounts)**, and **executive data analytics (Power BI Bento Grid)**, this system eliminates manual ticket lag, prevents B2B subscriber churn, and surfaces mission-critical operational bottlenecks within seconds.
 
+![Power BI Executive Customer Sentiment and Churn Risk Scorecard](docs/images/powerbi_scorecard_dashboard.png)
+
 ```
 +----------------------------------------------------------------------------------------------------+
 |                                    END-TO-END PIPELINE OVERVIEW                                    |
@@ -92,6 +94,11 @@ Prevents department heads from being bombarded when a customer logs duplicate co
   4. **Sales Desk:** Roaming passes, SME corporate fleet expansions, static IP requests.
   5. **HR / QA Desk:** Call center agent misconduct, rude branch franchise staff.
 - **Security:** Strict HTML entity escaping neutralizing potential email injection / stored XSS vulnerabilities.
+
+#### Automated Escalation Alert Samples
+| Network Operations Alert (Outage / Churn Risk) | Finance Billing Alert (Disputed Roaming / VAS) |
+|---|---|
+| ![Operations Escalation Alert](docs/images/alert_operations_sample.png) | ![Finance Billing Alert](docs/images/alert_finance_sample.png) |
 
 ---
 
