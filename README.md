@@ -14,38 +14,6 @@ Operating at the intersection of **AI workflow automation (n8n)**, **cognitive l
 
 ![Power BI Executive Customer Sentiment and Churn Risk Scorecard](docs/images/powerbi_scorecard_dashboard.png)
 
-```
-+----------------------------------------------------------------------------------------------------+
-|                                    END-TO-END PIPELINE OVERVIEW                                    |
-|                                                                                                    |
-|  [Inbound Feedback]                                                                                |
-|          │                                                                                         |
-|          ▼                                                                                         |
-|  [Webhook Ingestion] ────► [Schema Validation] ────► (Invalid <10 chars? ──► HTTP 400 Bad Request)|
-|                                    │                                                               |
-|                                    ▼                                                               |
-|                       [Client-Side PII Masking]                                                    |
-|                                    │                                                               |
-|                                    ▼                                                               |
-|                       [GPT-4o-mini AI Agent] ──► (Multi-Variable Extraction: 33 Attributes)        |
-|                                    │                                                               |
-|                                    ▼                                                               |
-|                       [Historical Dedup Engine] ──► (Signal Lookback Window: 48h to 90d)           |
-|                                    │                                                               |
-|                                    ▼                                                               |
-|                       [Google Cloud Master Ledger] ──► [HTTP 200 OK Response]                      |
-|                                    │                                                               |
-|            ┌───────────────────────┴───────────────────────┐                                       |
-|            ▼                                               ▼                                       |
-|  [Real-Time Escalations]                         [Power BI Executive Scorecard]                    |
-|  - Operations (Coverage Blackouts)               - 1920x1080 Single-Page Bento Grid                |
-|  - Finance (Billing Disputes)                    - 5 Uniform KPI Cards                             |
-|  - Marketing (Retention / Pricing)               - 100% Stacked Bar (Excl. Unknown)                |
-|  - Sales (B2B Upsell Leads)                      - Sentiment Mix Donut & Monthly Trend Line        |
-|  - HR (Frontline Conduct Review)                 - Operational High-Priority Triage Table          |
-+----------------------------------------------------------------------------------------------------+
-```
-
 ---
 
 ## 1. System Architecture & Engineering Components
@@ -107,29 +75,6 @@ Prevents department heads from being bombarded when a customer logs duplicate co
 ## 2. Power BI Executive Scorecard Specifications
 
 The Power BI scorecard is an executive single-page **Bento Grid** designed for 16:9 widescreen monitoring (**1920 × 1080 native resolution**).
-
-```
-+----------------------------------------------------------------------------------------------------+
-|  EXECUTIVE CUSTOMER SENTIMENT & CHURN RISK             [Customer_Type] [Urgency] [Service] [Dates] |
-+----------------------------------------------------------------------------------------------------+
-| [ 21 ] Total     [ 33.3% ] Sat Rate    [ 52.4% ] Dissat    [ 47.6% ] Churn Risk   [ 0.89 ] Quality |
-+----------------------------------------------------------------------------------------------------+
-| [100% Stacked Bar Chart]             [Horizontal Bar Chart]            [Donut Chart]               |
-| Churn Risk by Value Segment          Dept Escalations & Drivers        Overall Customer Sentiment  |
-| - Low: 50% High Risk                 - Operations: 5 High Risk         - Negative: 52.38% (11)     |
-| - Medium: 40% High Risk              - Finance: 3 High Risk            - Positive: 33.33% (7)      |
-| - High: 16.7% High Risk              - Marketing: 2 High Risk          - Neutral: 14.29% (3)       |
-| - Premium: 85.7% High Risk           - Sales: 0 / HR: 0                (Total: 21 Records)         |
-| (Visual Filter: Excludes 'unknown')  (X-Axis: Count of High Risk)                                  |
-+----------------------------------------------------------------------------------------------------+
-| [Time-Series Line Chart with Markers]                [High-Priority Operational Triage Table]      |
-| Monthly Satisfaction vs. Dissatisfaction Trend       churn_risk = TRUE OR urgency = "high"         |
-| - Aug 2026: Sat 28.6% | Dissat 57.1%                Columns: Customer ID, Location, Issues,       |
-| - Sep 2026: Sat 28.6% | Dissat 57.1%                         Urgency, Root Cause Summary           |
-| - Oct 2026: Sat 42.9% | Dissat 42.9%                Header: #1E293B bold white, Zebra striping,    |
-| (Markers: Size 6 Circle | Percentage Y-Axis)         Horizontal lines only, Auto-fitted widths     |
-+----------------------------------------------------------------------------------------------------+
-```
 
 ### A. Top Header & Dropdown Slicers
 - **Slicers:** Positioned horizontally in the top-right header as compact **Dropdowns** (not tiles or checkboxes):
